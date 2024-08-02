@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "asynctorch" 
+version = "0.0.1" 
+description = "Asynchronous spiking neural networks in PyTorch"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {file = "LICENSE"}
+keywords = ["asynctorch"]
+authors = [
+  {name = "Roel Koopman", email = "roel.koopman.ext@imec.nl" }
+]
+# For a list of valid classifiers, see https://pypi.org/classifiers/
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Topic :: Software Development :: Build Tools",
+  "Programming Language :: Python :: 3",
+]
+dependencies = [
+  "snntorch>=0.8.1"
+]
+
+[project.urls]
+"Homepage" = "https://github.imec.be/koopma31/asynctorch"
+"Issues" = "https://github.imec.be/koopma31/asynctorch/issues"
