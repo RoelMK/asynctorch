@@ -25,5 +25,5 @@ dependencies = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.imec.be/koopma31/asynctorch"
-"Issues" = "https://github.imec.be/koopma31/asynctorch/issues"
+"Homepage" = "https://github.com/RoelMK/asynctorch"
+"Issues" = "https://github.com/RoelMK/asynctorch/issues"

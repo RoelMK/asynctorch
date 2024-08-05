@@ -8,7 +8,7 @@ Asynctorch is not yet on PyPI. At this moment, only installation from the source
 
 To install directly from the source:
 ```console
-git clone https://github.imec.be/koopma31/asynctorch
+git clone https://github.com/RoelMK/asynctorch
 cd asynctorch
 pip install -e .
 ```
