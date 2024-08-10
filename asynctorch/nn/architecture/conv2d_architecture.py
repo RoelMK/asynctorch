@@ -8,12 +8,15 @@ from asynctorch.nn.architecture.base_architecture import BaseArchitecture
 # filters are of shape (out_channels, in_channels, kernel_height, kernel_width)
 # stride and padding are extra parameters
 class Conv2dParams:
-    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, padding: int = 0):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, is_avg_pool = False):
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.kernel_size = kernel_size # for now, we assume kernel is square
         self.stride = stride
         self.padding = padding
+        self.is_avg_pool = is_avg_pool
+        if is_avg_pool and in_channels != out_channels:
+            raise ValueError("Number of input channels must match number of output channels for average pooling")
 
 class Conv2dArchitecture(BaseArchitecture):
     conv_filters: nn.ParameterList # List of weights (nn.Parameter) for each convolutional filter, each are of shape are of shape (out_channels, in_channels, kernel_height, kernel_width)
@@ -54,7 +57,7 @@ class Conv2dArchitecture(BaseArchitecture):
             currents = currents.view(s.shape[0], -1)
             n_currents = n_currents.view(s.shape[0], -1)
             if currents.shape[1] != self.neurons_per_layer[0]:
-                raise ValueError("Number of neurons in first layer does not match number of output channels")
+                raise RuntimeError("Number of neurons in first layer does not match number of output channels")
             # Cat zeros to the end of the currents
             zeros = torch.zeros((s.shape[0], self.n_neurons - currents.shape[1]), dtype=torch.float32, device=self.device)
             currents = torch.cat((currents, zeros), dim=1)
