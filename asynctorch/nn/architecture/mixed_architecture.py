@@ -40,7 +40,7 @@ class AsyncNetwork(nn.Module):
     def __init__(self, input_layer: AsyncLayer, network_layers: List[AsyncLayer], n_neurons: int):
         super().__init__()
         self.input_layer = input_layer
-        self.layers = network_layers
+        self.layers = nn.ModuleList(network_layers)
         self.n_neurons = n_neurons
         self.n_inputs = len(input_layer.from_input_indices)
 
