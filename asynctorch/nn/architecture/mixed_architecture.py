@@ -50,8 +50,8 @@ class AsyncNetwork(nn.Module):
             n_currents = torch.zeros_like(currents)
             for layer in self.layers:
                 layer_currents, layer_n_currents = layer(s)
-                currents += layer_currents
-                n_currents += layer_n_currents
+                currents = currents + layer_currents
+                n_currents = n_currents + layer_n_currents
         return currents, n_currents
     
 
