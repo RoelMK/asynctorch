@@ -8,15 +8,12 @@ from asynctorch.nn.architecture.base_architecture import BaseArchitecture
 # filters are of shape (out_channels, in_channels, kernel_height, kernel_width)
 # stride and padding are extra parameters
 class Conv2dParams:
-    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, is_avg_pool = False):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, padding: int = 0):
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.kernel_size = kernel_size # for now, we assume kernel is square
         self.stride = stride
         self.padding = padding
-        self.is_avg_pool = is_avg_pool
-        if is_avg_pool and in_channels != out_channels:
-            raise ValueError("Number of input channels must match number of output channels for average pooling")
 
 class Conv2dArchitecture(BaseArchitecture):
     conv_filters: nn.ParameterList # List of weights (nn.Parameter) for each convolutional filter, each are of shape are of shape (out_channels, in_channels, kernel_height, kernel_width)
