@@ -3,6 +3,94 @@ import torch
 import torch.nn as nn
 from asynctorch.nn.neuron.neuron_state import NeuronState
 
+class LIFFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, 
+                I_new: torch.Tensor, 
+                n_I_new: torch.Tensor, 
+                membrane_potentials: torch.Tensor, 
+                membrane_threshold: torch.Tensor, 
+                synchronization_potentials: torch.Tensor, 
+                sync_threshold: torch.Tensor, 
+                is_refrac: torch.Tensor,
+                spike_grad, 
+                sync_grad, 
+                apply_refrac: bool):
+        # Only save I_new and n_I_new for which != 0
+        update_mask = I_new != 0
+
+        # Save relevant parts of the tensors for backward
+        ctx.save_for_backward(update_mask,
+                              I_new[update_mask], 
+                              n_I_new[update_mask], 
+                              membrane_potentials[update_mask], 
+                              membrane_threshold, 
+                              synchronization_potentials[update_mask], 
+                              sync_threshold, 
+                              is_refrac[update_mask])
+        ctx.apply_refrac = apply_refrac
+        ctx.spike_grad = spike_grad
+        ctx.sync_grad = sync_grad
+
+        # >> Add current, apply refractory period
+        if apply_refrac:
+            membrane_potentials = (membrane_potentials + I_new) * ~is_refrac
+        else:
+            membrane_potentials = membrane_potentials + I_new
+        synchronization_potentials = synchronization_potentials + n_I_new
+        # >> Check thresholds and spike
+        spk: torch.Tensor = (spike_grad(membrane_potentials * update_mask - membrane_threshold) * 
+                             sync_grad(synchronization_potentials * update_mask - sync_threshold))
+        membrane_potentials = membrane_potentials * (-spk + 1)
+        return spk
+
+    @staticmethod
+    def backward(ctx, grad_output: torch.Tensor):
+        # Retrieve saved tensors and other parameters
+        update_mask, I_new, n_I_new, membrane_potentials, membrane_threshold, synchronization_potentials, sync_threshold, is_refrac = ctx.saved_tensors
+        apply_refrac = ctx.apply_refrac
+        spike_grad = ctx.spike_grad
+        sync_grad = ctx.sync_grad
+
+        # Initialize gradients for each input tensor with the correct shape
+        full_I_new = torch.zeros_like(update_mask, dtype=I_new.dtype)
+        full_I_new[update_mask] = I_new
+        full_n_I_new = torch.zeros_like(update_mask, dtype=n_I_new.dtype)
+        full_n_I_new[update_mask] = n_I_new
+        full_membrane_potentials = torch.zeros_like(update_mask, dtype=membrane_potentials.dtype)
+        full_membrane_potentials[update_mask] = membrane_potentials
+        full_sync_potentials = torch.zeros_like(update_mask, dtype=synchronization_potentials.dtype)
+        full_sync_potentials[update_mask] = synchronization_potentials
+        full_is_refrac = torch.zeros_like(update_mask, dtype=is_refrac.dtype)
+        full_is_refrac[update_mask] = is_refrac
+
+        # Calculate gradients of the spike with respect to membrane_potentials and synchronization_potentials
+        grad_spike_membrane = spike_grad(full_membrane_potentials + full_I_new - membrane_threshold) # TODO: check if grad is backward
+        grad_spike_sync = sync_grad(full_sync_potentials  + full_n_I_new - sync_threshold)
+
+        # Backpropagate the gradients through the spike function
+        grad_spike = grad_output * grad_spike_membrane * grad_spike_sync
+
+        # Apply gradients to membrane_potentials and synchronization_potentials
+        grad_membrane_potentials = grad_spike * grad_spike_membrane
+        grad_sync_potentials = grad_spike * grad_spike_sync
+
+        # Calculate gradients with respect to membrane_threshold and sync_threshold
+        grad_membrane_threshold = -grad_spike * grad_spike_membrane
+        grad_sync_threshold = -grad_spike * grad_spike_sync
+
+        # Calculate gradients with respect to I_new and n_I_new
+        if apply_refrac:
+            grad_I_new = grad_membrane_potentials * ~full_is_refrac
+        else:
+            grad_I_new = grad_membrane_potentials
+        grad_n_I_new = grad_sync_potentials
+
+        # Return the gradients with respect to all inputs
+        return (grad_I_new, grad_n_I_new, None, grad_membrane_threshold, 
+                grad_sync_potentials, grad_sync_threshold, None, 
+                None, None, None)
+
 class LIFState(NeuronState):
     membrane_potentials: torch.Tensor  # shape = (batch_size, n_neurons)
     pre_spike_membrane_potentials: torch.Tensor  # shape = (batch_size, n_neurons)

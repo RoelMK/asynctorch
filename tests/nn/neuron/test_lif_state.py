@@ -1,7 +1,30 @@
-from asynctorch.nn.neuron.lif_state import LIFState
+from asynctorch.nn.neuron.lif_state import LIFFunction, LIFState
 import torch
 from snntorch import surrogate
 import numpy as np
+
+def test_lif_function():
+    n_neurons = 10
+    batch_size = 2
+    W = torch.rand((n_neurons), dtype=torch.float32, requires_grad=True)
+    I_new = torch.ones((batch_size, n_neurons), dtype=torch.float32) * W
+    n_I_new = torch.ones((batch_size, n_neurons), dtype=torch.float32)
+    membrane_potentials = torch.zeros((batch_size, n_neurons), dtype=torch.float32)
+    membrane_threshold = torch.full(size=(n_neurons,), fill_value=0.3, dtype=torch.float32)
+    sync_potentials = torch.zeros((batch_size, n_neurons), dtype=torch.float32)
+    sync_threshold = torch.zeros(n_neurons, dtype=torch.float32)
+    spike_grad = surrogate.sigmoid()
+    sync_grad = surrogate.sigmoid()
+    apply_refrac = False
+    is_refrac = torch.zeros((batch_size, n_neurons), dtype=torch.bool)
+    spk: torch.Tensor = LIFFunction.apply(
+        I_new, n_I_new, membrane_potentials, membrane_threshold, sync_potentials, sync_threshold, is_refrac,
+        spike_grad, sync_grad, apply_refrac
+    )
+    spk.sum().backward()
+    print(W.grad)
+
+test_lif_function()
 
 def test_zero_current_forward():
     device = torch.device("cpu")
