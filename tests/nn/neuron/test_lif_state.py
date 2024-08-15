@@ -3,9 +3,12 @@ import torch
 from snntorch import surrogate
 import numpy as np
 
+from asynctorch.utils.surrogate import FastSigmoid
+
 def test_lif_function():
     n_neurons = 10
     batch_size = 2
+    torch.manual_seed(0)
     W = torch.rand((n_neurons), dtype=torch.float32, requires_grad=True)
     I_new = torch.ones((batch_size, n_neurons), dtype=torch.float32) * W
     n_I_new = torch.ones((batch_size, n_neurons), dtype=torch.float32)
@@ -13,8 +16,8 @@ def test_lif_function():
     membrane_threshold = torch.full(size=(n_neurons,), fill_value=0.3, dtype=torch.float32)
     sync_potentials = torch.zeros((batch_size, n_neurons), dtype=torch.float32)
     sync_threshold = torch.zeros(n_neurons, dtype=torch.float32)
-    spike_grad = surrogate.sigmoid()
-    sync_grad = surrogate.sigmoid()
+    spike_grad = FastSigmoid(1)
+    sync_grad = FastSigmoid(1)
     apply_refrac = False
     is_refrac = torch.zeros((batch_size, n_neurons), dtype=torch.bool)
     spk: torch.Tensor = LIFFunction.apply(

@@ -2,6 +2,7 @@ from typing import List, Union
 import torch
 import torch.nn as nn
 from asynctorch.nn.neuron.neuron_state import NeuronState
+from asynctorch.utils.surrogate import SurrogateThresholdFunction
 
 class LIFFunction(torch.autograd.Function):
     @staticmethod
@@ -13,8 +14,8 @@ class LIFFunction(torch.autograd.Function):
                 synchronization_potentials: torch.Tensor, 
                 sync_threshold: torch.Tensor, 
                 is_refrac: torch.Tensor,
-                spike_grad, 
-                sync_grad, 
+                spike_grad: SurrogateThresholdFunction, 
+                sync_grad: SurrogateThresholdFunction, 
                 apply_refrac: bool):
         # Only save I_new and n_I_new for which != 0
         update_mask = I_new != 0
@@ -39,8 +40,8 @@ class LIFFunction(torch.autograd.Function):
             membrane_potentials = membrane_potentials + I_new
         synchronization_potentials = synchronization_potentials + n_I_new
         # >> Check thresholds and spike
-        spk: torch.Tensor = (spike_grad(membrane_potentials * update_mask - membrane_threshold) * 
-                             sync_grad(synchronization_potentials * update_mask - sync_threshold))
+        spk: torch.Tensor = (spike_grad.forward(membrane_potentials * update_mask - membrane_threshold) * 
+                             sync_grad.forward(synchronization_potentials * update_mask - sync_threshold))
         membrane_potentials = membrane_potentials * (-spk + 1)
         return spk
 
@@ -65,8 +66,8 @@ class LIFFunction(torch.autograd.Function):
         full_is_refrac[update_mask] = is_refrac
 
         # Calculate gradients of the spike with respect to membrane_potentials and synchronization_potentials
-        grad_spike_membrane = spike_grad(full_membrane_potentials + full_I_new - membrane_threshold) # TODO: check if grad is backward
-        grad_spike_sync = sync_grad(full_sync_potentials  + full_n_I_new - sync_threshold)
+        grad_spike_membrane = spike_grad.backward(full_membrane_potentials + full_I_new - membrane_threshold)
+        grad_spike_sync = sync_grad.backward(full_sync_potentials  + full_n_I_new - sync_threshold)
 
         # Backpropagate the gradients through the spike function
         grad_spike = grad_output * grad_spike_membrane * grad_spike_sync
