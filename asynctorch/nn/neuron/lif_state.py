@@ -17,60 +17,52 @@ class LIFFunction(torch.autograd.Function):
                 spike_grad: SurrogateThresholdFunction, 
                 sync_grad: SurrogateThresholdFunction, 
                 apply_refrac: bool):
-        # Only save I_new and n_I_new for which != 0
-        update_mask = I_new != 0
-
-        # Save relevant parts of the tensors for backward
-        ctx.save_for_backward(update_mask,
-                              I_new[update_mask], 
-                              n_I_new[update_mask], 
-                              membrane_potentials[update_mask], 
-                              membrane_threshold, 
-                              synchronization_potentials[update_mask], 
-                              sync_threshold, 
-                              is_refrac[update_mask])
         ctx.apply_refrac = apply_refrac
         ctx.spike_grad = spike_grad
         ctx.sync_grad = sync_grad
 
+        # Only save I_new and n_I_new for which != 0
+        update_mask = I_new != 0
+        
         # >> Add current, apply refractory period
         if apply_refrac:
             membrane_potentials = (membrane_potentials + I_new) * ~is_refrac
         else:
             membrane_potentials = membrane_potentials + I_new
         synchronization_potentials = synchronization_potentials + n_I_new
+        check_membrane_potentials = membrane_potentials * update_mask - membrane_threshold
+        check_sync_potentials = synchronization_potentials * update_mask - sync_threshold
+
+        # Save tensors for backward pass
+        ctx.save_for_backward(update_mask, check_membrane_potentials[update_mask], check_sync_potentials[update_mask], is_refrac[update_mask])
+        
         # >> Check thresholds and spike
-        spk: torch.Tensor = (spike_grad.forward(membrane_potentials * update_mask - membrane_threshold) * 
-                             sync_grad.forward(synchronization_potentials * update_mask - sync_threshold))
-        membrane_potentials = membrane_potentials * (-spk + 1)
-        return spk
+        spk: torch.Tensor = (spike_grad.forward(check_membrane_potentials) * 
+                             sync_grad.forward(check_sync_potentials))
+        return spk, membrane_potentials, synchronization_potentials
 
     @staticmethod
-    def backward(ctx, grad_output: torch.Tensor):
+    def backward(ctx, dL_dspk: torch.Tensor, _0, _1):
         # Retrieve saved tensors and other parameters
-        update_mask, I_new, n_I_new, membrane_potentials, membrane_threshold, synchronization_potentials, sync_threshold, is_refrac = ctx.saved_tensors
+        update_mask, check_membrane_potentials, check_sync_potentials, is_refrac = ctx.saved_tensors
         apply_refrac = ctx.apply_refrac
         spike_grad = ctx.spike_grad
         sync_grad = ctx.sync_grad
 
         # Initialize gradients for each input tensor with the correct shape
-        full_I_new = torch.zeros_like(update_mask, dtype=I_new.dtype)
-        full_I_new[update_mask] = I_new
-        full_n_I_new = torch.zeros_like(update_mask, dtype=n_I_new.dtype)
-        full_n_I_new[update_mask] = n_I_new
-        full_membrane_potentials = torch.zeros_like(update_mask, dtype=membrane_potentials.dtype)
-        full_membrane_potentials[update_mask] = membrane_potentials
-        full_sync_potentials = torch.zeros_like(update_mask, dtype=synchronization_potentials.dtype)
-        full_sync_potentials[update_mask] = synchronization_potentials
+        full_check_membrane_potentials = torch.zeros_like(update_mask, dtype=check_membrane_potentials.dtype)
+        full_check_membrane_potentials[update_mask] = check_membrane_potentials
+        full_check_sync_potentials = torch.zeros_like(update_mask, dtype=check_sync_potentials.dtype)
+        full_check_sync_potentials[update_mask] = check_sync_potentials
         full_is_refrac = torch.zeros_like(update_mask, dtype=is_refrac.dtype)
         full_is_refrac[update_mask] = is_refrac
 
         # Calculate gradients of the spike with respect to membrane_potentials and synchronization_potentials
-        grad_spike_membrane = spike_grad.backward(full_membrane_potentials + full_I_new - membrane_threshold)
-        grad_spike_sync = sync_grad.backward(full_sync_potentials  + full_n_I_new - sync_threshold)
+        grad_spike_membrane = spike_grad.backward(full_check_membrane_potentials)
+        grad_spike_sync = sync_grad.backward(full_check_sync_potentials)
 
         # Backpropagate the gradients through the spike function
-        grad_spike = grad_output * grad_spike_membrane * grad_spike_sync
+        grad_spike = dL_dspk * grad_spike_membrane * grad_spike_sync
 
         # Apply gradients to membrane_potentials and synchronization_potentials
         grad_membrane_potentials = grad_spike * grad_spike_membrane
@@ -89,7 +81,7 @@ class LIFFunction(torch.autograd.Function):
 
         # Return the gradients with respect to all inputs
         return (grad_I_new, grad_n_I_new, None, grad_membrane_threshold, 
-                grad_sync_potentials, grad_sync_threshold, None, 
+                None, grad_sync_threshold, None, 
                 None, None, None)
 
 class LIFState(NeuronState):
@@ -190,24 +182,42 @@ class LIFState(NeuronState):
         if not self.is_init():
             raise RuntimeError("State module not initialized")
 
-        update_mask = I_new != 0
-        # >> Add current, apply refractory period
-        if self.apply_refrac:
-            self.membrane_potentials = (self.membrane_potentials + I_new) * ~self.is_refrac
+        if False:
+            spk, membrane_potentials, synchronization_potentials = LIFFunction.apply(
+                    I_new, n_I_new, self.membrane_potentials, self.membrane_threshold, self.synchronization_potentials, self.sync_threshold, self.is_refrac,
+                    self.spike_grad, self.sync_grad, self.apply_refrac
+                )
+            self.pre_spike_membrane_potentials = membrane_potentials * spk + self.pre_spike_membrane_potentials * (1 - spk)
+            self.membrane_potentials = membrane_potentials * (-spk + 1)
+            self.synchronization_potentials = synchronization_potentials
+            # >> Set refractory period
+            if self.apply_refrac:
+                if self.refrac_dropout > 0:
+                    refrac_add = torch.where(torch.rand_like(spk) < self.refrac_dropout, torch.zeros_like(spk), spk)
+                else:
+                    refrac_add = spk
+                self.is_refrac.add_(refrac_add.bool())
         else:
-            self.membrane_potentials = self.membrane_potentials + I_new
-        self.synchronization_potentials = self.synchronization_potentials + n_I_new
-        # >> Check thresholds and spike
-        spk: torch.Tensor = (self.spike_grad(self.membrane_potentials * update_mask - self.membrane_threshold) * 
-                             self.sync_grad(self.synchronization_potentials * update_mask - self.sync_threshold)
-                            )
-        self.pre_spike_membrane_potentials = self.membrane_potentials * spk + self.pre_spike_membrane_potentials * (1 - spk)
-        self.membrane_potentials = self.membrane_potentials * (-spk + 1)
-        # >> Set refractory period
-        if self.apply_refrac:
-            if self.refrac_dropout > 0:
-                refrac_add = torch.where(torch.rand_like(spk) < self.refrac_dropout, torch.zeros_like(spk), spk)
+            update_mask = I_new != 0
+            # >> Add current, apply refractory period
+            if self.apply_refrac:
+                membrane_potentials = (self.membrane_potentials + I_new) * ~self.is_refrac
             else:
-                refrac_add = spk
-            self.is_refrac.add_(refrac_add.bool())
+                membrane_potentials = self.membrane_potentials + I_new
+            synchronization_potentials = self.synchronization_potentials + n_I_new
+            # >> Check thresholds and spike
+            spk: torch.Tensor = (self.spike_grad(membrane_potentials * update_mask - self.membrane_threshold) * 
+                                self.sync_grad(synchronization_potentials * update_mask - self.sync_threshold)
+                                )
+            self.pre_spike_membrane_potentials = membrane_potentials * spk + self.pre_spike_membrane_potentials * (1 - spk)
+            self.membrane_potentials = self.membrane_potentials * (-spk + 1)
+            # >> Set refractory period
+            if self.apply_refrac:
+                if self.refrac_dropout > 0:
+                    refrac_add = torch.where(torch.rand_like(spk) < self.refrac_dropout, torch.zeros_like(spk), spk)
+                else:
+                    refrac_add = spk
+                self.is_refrac.add_(refrac_add.bool())
+
+
         return spk
