@@ -91,6 +91,7 @@ class SpikeSelector(nn.Module):
         if not self.prioritize_input:
             # Make sure the spikes are in the right shape, since we also need to track input spikes in outgoing_spikes.
             if is_input:
+                print(s_in.shape)
                 s_in = torch.cat((s_in, torch.zeros((s_in.shape[0], self.architecture.n_neurons), device=self.device)), dim=1)
             else:
                 s_in = torch.cat((torch.zeros((s_in.shape[0], self.architecture.n_inputs), device=self.device), s_in), dim=1)

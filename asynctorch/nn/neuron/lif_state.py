@@ -102,18 +102,18 @@ class LIFState(NeuronState):
             raise RuntimeError("State module not initialized")
 
         update_mask = I_new != 0
-        # >> Add current
-        self.membrane_potentials = self.membrane_potentials + I_new
-        self.synchronization_potentials = self.synchronization_potentials + n_I_new
-        # >> Apply refractory period
+        # >> Add current, apply refractory period
         if self.apply_refrac:
-            self.membrane_potentials = self.membrane_potentials * ~self.is_refrac
+            membrane_potentials = (self.membrane_potentials + I_new) * ~self.is_refrac
+        else:
+            membrane_potentials = self.membrane_potentials + I_new
+        self.synchronization_potentials = self.synchronization_potentials + n_I_new
         # >> Check thresholds and spike
-        mem_shifted = self.membrane_potentials * update_mask - self.membrane_threshold
-        sync_shifted = self.synchronization_potentials * update_mask - self.sync_threshold
-        spk: torch.Tensor = self.spike_grad(mem_shifted) * self.sync_grad(sync_shifted)
-        self.pre_spike_membrane_potentials = self.membrane_potentials * spk + self.pre_spike_membrane_potentials * (1 - spk)
-        self.membrane_potentials = self.membrane_potentials * (-spk + 1)  # Reset membrane potential if spike
+        spk: torch.Tensor = (self.spike_grad(membrane_potentials * update_mask - self.membrane_threshold) * 
+                            self.sync_grad(self.synchronization_potentials * update_mask - self.sync_threshold)
+                            )
+        self.pre_spike_membrane_potentials = membrane_potentials * spk + self.pre_spike_membrane_potentials * (1 - spk)
+        self.membrane_potentials = membrane_potentials * (-spk + 1)
         # >> Set refractory period
         if self.apply_refrac:
             if self.refrac_dropout > 0:
@@ -121,4 +121,5 @@ class LIFState(NeuronState):
             else:
                 refrac_add = spk
             self.is_refrac.add_(refrac_add.bool())
+
         return spk
