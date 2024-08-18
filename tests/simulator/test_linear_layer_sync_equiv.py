@@ -4,7 +4,7 @@
 
 import torch
 from snntorch import surrogate
-from asynctorch.nn.architecture.sparse_fully_linear_architecture import SparseFullyLinearArchitecture
+from asynctorch.nn.architecture.mixed_architecture import AsyncNetwork, MixedArchitecture
 from asynctorch.nn.neuron.lif_state import LIFState
 import torch.nn as nn
 import snntorch as snn
@@ -13,7 +13,7 @@ from asynctorch.simulator.async_simulator import AsyncSimulator
 
 from asynctorch.simulator.spike_scheduler import RandomSpikeScheduler
 from asynctorch.simulator.spike_selector import SpikeSelector
-from leaky import Leaky
+from .leaky import Leaky
 
 def build_layer_synchronized_module(tau_m, threshold, weights_linear1, weights_linear2, device) -> nn.Module:
     beta = np.exp(-1.0 / tau_m)
@@ -31,15 +31,16 @@ def build_layer_synchronized_module(tau_m, threshold, weights_linear1, weights_l
 def build_async_torch_module(tau_m, threshold, weights_linear1, weights_linear2, device) -> AsyncSimulator:
     spike_grad = surrogate.atan()
     neurons_per_layer = [3, 2]
+    n_inputs = 3
     n_neurons = sum(neurons_per_layer)
+    async_network: AsyncNetwork = AsyncNetwork.build_sequential([nn.Linear(n_inputs, 3, bias=False), nn.Linear(3, 2, bias=False)], [(n_inputs,), (3,), (2,)])
+    async_network.input_layer.module.weight.data = weights_linear1
+    async_network.layers[0].module.weight.data = weights_linear2
     tau_m = torch.full((n_neurons,), tau_m, dtype=torch.float32)
     membrane_threshold = torch.full((n_neurons,), threshold, dtype=torch.float32)
     sync_threshold = torch.zeros(n_neurons, dtype=torch.float32)
     state_module = LIFState(neurons_per_layer, tau_m, membrane_threshold, sync_threshold, spike_grad, spike_grad, device)
-    forward_module = SparseFullyLinearArchitecture(3, neurons_per_layer, device)
-    weights_per_layer = [weights_linear1, weights_linear2]
-    state_dict = SparseFullyLinearArchitecture.create_state_dict_from_weights_list(weights_per_layer)
-    forward_module.load_state_dict(state_dict)
+    forward_module = MixedArchitecture(async_network, device)
     spike_scheduler = RandomSpikeScheduler(state_module)
     spike_selector_module = SpikeSelector(forward_module, spike_scheduler, 3, device, prioritize_input=False)
     return AsyncSimulator(state_module, spike_selector_module)

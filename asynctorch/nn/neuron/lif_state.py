@@ -2,87 +2,86 @@ from typing import List, Union
 import torch
 import torch.nn as nn
 from asynctorch.nn.neuron.neuron_state import NeuronState
-from asynctorch.utils.surrogate import SurrogateThresholdFunction
 
-class LIFFunction(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, 
-                I_new: torch.Tensor, 
-                n_I_new: torch.Tensor, 
-                membrane_potentials: torch.Tensor, 
-                membrane_threshold: torch.Tensor, 
-                synchronization_potentials: torch.Tensor, 
-                sync_threshold: torch.Tensor, 
-                is_refrac: torch.Tensor,
-                spike_grad: SurrogateThresholdFunction, 
-                sync_grad: SurrogateThresholdFunction, 
-                apply_refrac: bool):
-        ctx.apply_refrac = apply_refrac
-        ctx.spike_grad = spike_grad
-        ctx.sync_grad = sync_grad
+# class LIFFunction(torch.autograd.Function):
+#     @staticmethod
+#     def forward(ctx, 
+#                 I_new: torch.Tensor, 
+#                 n_I_new: torch.Tensor, 
+#                 membrane_potentials: torch.Tensor, 
+#                 membrane_threshold: torch.Tensor, 
+#                 synchronization_potentials: torch.Tensor, 
+#                 sync_threshold: torch.Tensor, 
+#                 is_refrac: torch.Tensor,
+#                 spike_grad: SurrogateThresholdFunction, 
+#                 sync_grad: SurrogateThresholdFunction, 
+#                 apply_refrac: bool):
+#         ctx.apply_refrac = apply_refrac
+#         ctx.spike_grad = spike_grad
+#         ctx.sync_grad = sync_grad
 
-        # Only save I_new and n_I_new for which != 0
-        update_mask = I_new != 0
+#         # Only save I_new and n_I_new for which != 0
+#         update_mask = I_new != 0
         
-        # >> Add current, apply refractory period
-        if apply_refrac:
-            membrane_potentials = (membrane_potentials + I_new) * ~is_refrac
-        else:
-            membrane_potentials = membrane_potentials + I_new
-        synchronization_potentials = synchronization_potentials + n_I_new
-        check_membrane_potentials = membrane_potentials * update_mask - membrane_threshold
-        check_sync_potentials = synchronization_potentials * update_mask - sync_threshold
+#         # >> Add current, apply refractory period
+#         if apply_refrac:
+#             membrane_potentials = (membrane_potentials + I_new) * ~is_refrac
+#         else:
+#             membrane_potentials = membrane_potentials + I_new
+#         synchronization_potentials = synchronization_potentials + n_I_new
+#         check_membrane_potentials = membrane_potentials * update_mask - membrane_threshold
+#         check_sync_potentials = synchronization_potentials * update_mask - sync_threshold
 
-        # Save tensors for backward pass
-        ctx.save_for_backward(update_mask, check_membrane_potentials[update_mask], check_sync_potentials[update_mask], is_refrac[update_mask])
+#         # Save tensors for backward pass
+#         ctx.save_for_backward(update_mask, check_membrane_potentials[update_mask], check_sync_potentials[update_mask], is_refrac[update_mask])
         
-        # >> Check thresholds and spike
-        spk: torch.Tensor = (spike_grad.forward(check_membrane_potentials) * 
-                             sync_grad.forward(check_sync_potentials))
-        return spk, membrane_potentials, synchronization_potentials
+#         # >> Check thresholds and spike
+#         spk: torch.Tensor = (spike_grad.forward(check_membrane_potentials) * 
+#                              sync_grad.forward(check_sync_potentials))
+#         return spk, membrane_potentials, synchronization_potentials
 
-    @staticmethod
-    def backward(ctx, dL_dspk: torch.Tensor, _0, _1):
-        # Retrieve saved tensors and other parameters
-        update_mask, check_membrane_potentials, check_sync_potentials, is_refrac = ctx.saved_tensors
-        apply_refrac = ctx.apply_refrac
-        spike_grad = ctx.spike_grad
-        sync_grad = ctx.sync_grad
+#     @staticmethod
+#     def backward(ctx, dL_dspk: torch.Tensor, _0, _1):
+#         # Retrieve saved tensors and other parameters
+#         update_mask, check_membrane_potentials, check_sync_potentials, is_refrac = ctx.saved_tensors
+#         apply_refrac = ctx.apply_refrac
+#         spike_grad = ctx.spike_grad
+#         sync_grad = ctx.sync_grad
 
-        # Initialize gradients for each input tensor with the correct shape
-        full_check_membrane_potentials = torch.zeros_like(update_mask, dtype=check_membrane_potentials.dtype)
-        full_check_membrane_potentials[update_mask] = check_membrane_potentials
-        full_check_sync_potentials = torch.zeros_like(update_mask, dtype=check_sync_potentials.dtype)
-        full_check_sync_potentials[update_mask] = check_sync_potentials
-        full_is_refrac = torch.zeros_like(update_mask, dtype=is_refrac.dtype)
-        full_is_refrac[update_mask] = is_refrac
+#         # Initialize gradients for each input tensor with the correct shape
+#         full_check_membrane_potentials = torch.zeros_like(update_mask, dtype=check_membrane_potentials.dtype)
+#         full_check_membrane_potentials[update_mask] = check_membrane_potentials
+#         full_check_sync_potentials = torch.zeros_like(update_mask, dtype=check_sync_potentials.dtype)
+#         full_check_sync_potentials[update_mask] = check_sync_potentials
+#         full_is_refrac = torch.zeros_like(update_mask, dtype=is_refrac.dtype)
+#         full_is_refrac[update_mask] = is_refrac
 
-        # Calculate gradients of the spike with respect to membrane_potentials and synchronization_potentials
-        grad_spike_membrane = spike_grad.backward(full_check_membrane_potentials)
-        grad_spike_sync = sync_grad.backward(full_check_sync_potentials)
+#         # Calculate gradients of the spike with respect to membrane_potentials and synchronization_potentials
+#         grad_spike_membrane = spike_grad.backward(full_check_membrane_potentials)
+#         grad_spike_sync = sync_grad.backward(full_check_sync_potentials)
 
-        # Backpropagate the gradients through the spike function
-        grad_spike = dL_dspk * grad_spike_membrane * grad_spike_sync
+#         # Backpropagate the gradients through the spike function
+#         grad_spike = dL_dspk * grad_spike_membrane * grad_spike_sync
 
-        # Apply gradients to membrane_potentials and synchronization_potentials
-        grad_membrane_potentials = grad_spike * grad_spike_membrane
-        grad_sync_potentials = grad_spike * grad_spike_sync
+#         # Apply gradients to membrane_potentials and synchronization_potentials
+#         grad_membrane_potentials = grad_spike * grad_spike_membrane
+#         grad_sync_potentials = grad_spike * grad_spike_sync
 
-        # Calculate gradients with respect to membrane_threshold and sync_threshold
-        grad_membrane_threshold = -grad_spike * grad_spike_membrane
-        grad_sync_threshold = -grad_spike * grad_spike_sync
+#         # Calculate gradients with respect to membrane_threshold and sync_threshold
+#         grad_membrane_threshold = -grad_spike * grad_spike_membrane
+#         grad_sync_threshold = -grad_spike * grad_spike_sync
 
-        # Calculate gradients with respect to I_new and n_I_new
-        if apply_refrac:
-            grad_I_new = grad_membrane_potentials * ~full_is_refrac
-        else:
-            grad_I_new = grad_membrane_potentials
-        grad_n_I_new = grad_sync_potentials
+#         # Calculate gradients with respect to I_new and n_I_new
+#         if apply_refrac:
+#             grad_I_new = grad_membrane_potentials * ~full_is_refrac
+#         else:
+#             grad_I_new = grad_membrane_potentials
+#         grad_n_I_new = grad_sync_potentials
 
-        # Return the gradients with respect to all inputs
-        return (grad_I_new, grad_n_I_new, None, grad_membrane_threshold, 
-                None, grad_sync_threshold, None, 
-                None, None, None)
+#         # Return the gradients with respect to all inputs
+#         return (grad_I_new, grad_n_I_new, None, grad_membrane_threshold, 
+#                 None, grad_sync_threshold, None, 
+#                 None, None, None)
     
 class LIFState(NeuronState):
     membrane_potentials: torch.Tensor  # shape = (batch_size, n_neurons)

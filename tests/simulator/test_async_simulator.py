@@ -1,28 +1,26 @@
 import torch
 from snntorch import surrogate
-from asynctorch.nn.architecture.sparse_fully_linear_architecture import SparseFullyLinearArchitecture
+from asynctorch.nn.architecture.mixed_architecture import AsyncNetwork, MixedArchitecture
 from asynctorch.nn.neuron.lif_state import LIFState
 from asynctorch.simulator.async_simulator import AsyncSimulator
 from asynctorch.simulator.spike_scheduler import RandomSpikeScheduler
 from asynctorch.simulator.spike_selector import SpikeSelector
+from torch import nn
 
 
-def build_async_simulator(n_inputs=2, neurons_per_layer=[3,4], tau_m=1.0, membrane_threshold=1.0, sync_threshold=0.0, forward_group_size=2, weight_value=1.0, forward_step_extensions=[], apply_refrac=True, prioritize_input=False):
+def build_async_simulator(tau_m=1.0, membrane_threshold=1.0, sync_threshold=0.0, forward_group_size=2, forward_step_extensions=[], apply_refrac=True, prioritize_input=False):
     device = torch.device("cpu")
-    n_neurons = sum(neurons_per_layer)
+    n_inputs = 2
+    n_neurons = 7
+    neurons_per_layer = [3, 4]
+    async_network = AsyncNetwork.build_sequential([nn.Linear(n_inputs, 3), nn.Linear(3, 4)], [(n_inputs,), (3,), (4,)])
     tau_m = torch.full((n_neurons,), tau_m, dtype=torch.float32, device=device)
     membrane_threshold = torch.full((n_neurons,), membrane_threshold, dtype=torch.float32, device=device)
     sync_threshold = torch.full((n_neurons,), sync_threshold, dtype=torch.float32, device=device)
     spike_grad = surrogate.atan()
 
     state_module = LIFState(neurons_per_layer, tau_m, membrane_threshold, sync_threshold, spike_grad, spike_grad, device, apply_refrac=apply_refrac)
-    forward_module = SparseFullyLinearArchitecture(n_inputs, neurons_per_layer, device)
-    weights_per_layer = []
-    for i in range(len(neurons_per_layer)):
-        n_in_neurons = neurons_per_layer[i-1] if i > 0 else n_inputs
-        weights_per_layer.append(torch.full((neurons_per_layer[i], n_in_neurons), weight_value, dtype=torch.float32))
-    state_dict = SparseFullyLinearArchitecture.create_state_dict_from_weights_list(weights_per_layer)
-    forward_module.load_state_dict(state_dict)
+    forward_module = MixedArchitecture(async_network, device)
     spike_scheduler = RandomSpikeScheduler(None)
     spike_selector_module = SpikeSelector(forward_module, spike_scheduler, forward_group_size, device, prioritize_input=prioritize_input)
     return AsyncSimulator(state_module, spike_selector_module, forward_step_extensions=forward_step_extensions)

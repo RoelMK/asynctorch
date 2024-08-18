@@ -1,7 +1,6 @@
 import torch
 from snntorch import surrogate
-from asynctorch.nn.architecture.conv2d_architecture import Conv2dArchitecture, Conv2dParams
-from asynctorch.nn.architecture.sparse_fully_linear_architecture import SparseFullyLinearArchitecture
+from asynctorch.nn.architecture.mixed_architecture import AsyncNetwork, MixedArchitecture
 from asynctorch.nn.neuron.lif_state import LIFState
 import torch.nn as nn
 import snntorch as snn
@@ -10,7 +9,7 @@ from asynctorch.simulator.async_simulator import AsyncSimulator
 
 from asynctorch.simulator.spike_scheduler import RandomSpikeScheduler
 from asynctorch.simulator.spike_selector import SpikeSelector
-from leaky import Leaky
+from .leaky import Leaky
 
         
 def build_layer_synchronized_module(tau_m, threshold, weights_conv1, weights_conv2, weights_fc, device) -> nn.Module:
@@ -33,19 +32,24 @@ def build_layer_synchronized_module(tau_m, threshold, weights_conv1, weights_con
 
 def build_async_torch_module(tau_m, threshold, weights_conv1, weights_conv2, weights_fc, device) -> AsyncSimulator:
     spike_grad = surrogate.atan()
-    neurons_per_layer = [192, 32, 2]
-    conv_params_per_layer = [
-        Conv2dParams(in_channels=2, out_channels=3, kernel_size=3, stride=2, padding=1),
-        Conv2dParams(in_channels=3, out_channels=2, kernel_size=3, stride=2, padding=1),
-    ]
+    shape_per_layer = [(2, 16, 16), (3, 8, 8), (2, 4, 4), (32,)]
+    neurons_per_layer = [np.prod(shape) for shape in shape_per_layer[1:]]
+    async_network: AsyncNetwork = AsyncNetwork.build_sequential([
+            nn.Conv2d(in_channels=2, out_channels=3, kernel_size=3, stride=2, padding=1, bias=False), 
+            nn.Conv2d(in_channels=3, out_channels=2, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.Linear(32, 2, bias=False)
+        ], 
+        shape_per_layer
+    )
+    async_network.input_layer.module.weight.data = weights_conv1
+    async_network.layers[0].module.weight.data = weights_conv2
+    async_network.layers[1].module.weight.data = weights_fc
+    forward_module = MixedArchitecture(async_network, device)
     n_neurons = sum(neurons_per_layer)
     tau_m = torch.full((n_neurons,), tau_m, dtype=torch.float32)
     membrane_threshold = torch.full((n_neurons,), threshold, dtype=torch.float32)
     sync_threshold = torch.zeros(n_neurons, dtype=torch.float32)
     state_module = LIFState(neurons_per_layer, tau_m, membrane_threshold, sync_threshold, spike_grad, spike_grad, device)
-    forward_module = Conv2dArchitecture(2, 16, 16, neurons_per_layer, conv_params_per_layer, device)
-    state_dict = Conv2dArchitecture.create_state_dict([weights_conv1, weights_conv2], weights_fc)
-    forward_module.load_state_dict(state_dict)
     spike_scheduler = RandomSpikeScheduler(state_module)
     spike_selector_module = SpikeSelector(forward_module, spike_scheduler, 192, device, prioritize_input=True)
     return AsyncSimulator(state_module, spike_selector_module)
