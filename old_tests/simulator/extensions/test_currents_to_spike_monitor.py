@@ -1,6 +1,6 @@
 from asynctorch.simulator.extensions.currents_to_spike_monitor import CurrentsToSpikeMonitor
 import torch
-from tests.simulator.test_async_simulator import build_async_simulator
+from old_tests.simulator.test_async_simulator import build_async_simulator
 
 def test_currents_to_spike_monitor_isolated():
     monitor = CurrentsToSpikeMonitor(3,0, torch.device('cpu'))

@@ -3,7 +3,7 @@ from asynctorch.simulator.extensions.spikes_to_output_monitor import (
 )
 import torch
 
-from tests.simulator.test_async_simulator import build_async_simulator
+from old_tests.simulator.test_async_simulator import build_async_simulator
 
 
 def test_spikes_to_output_monitor_single_step():

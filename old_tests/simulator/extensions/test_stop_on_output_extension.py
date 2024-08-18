@@ -1,7 +1,7 @@
 from asynctorch.simulator.extensions.stop_on_output_extension import StopOnOutputExtension
 import torch
 
-from tests.simulator.test_async_simulator import build_async_simulator
+from old_tests.simulator.test_async_simulator import build_async_simulator
 
 
 def test_stop_on_output_without_post_output():
