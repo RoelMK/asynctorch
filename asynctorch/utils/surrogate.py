@@ -9,23 +9,47 @@ class SurrogateThresholdFunction(ABC):
     def backward(self, x):
         pass
 
+import torch
+
 class Sigmoid(SurrogateThresholdFunction):
     def __init__(self, slope=1.0):
         self.slope = slope
 
     def backward(self, x: torch.Tensor):
-        return self.slope * torch.exp(-self.slope * x) / ((torch.exp(-self.slope * x) + 1) ** 2)
+        if x.is_sparse:
+            # Apply the operation only on the non-zero elements (values)
+            values = x._values()
+            exp_term = torch.exp(-self.slope * values)
+            new_values = self.slope * exp_term / ((exp_term + 1) ** 2)
+            # Return a new sparse tensor with the updated values
+            return torch.sparse_coo_tensor(x._indices(), new_values, x.shape)
+        else:
+            return self.slope * torch.exp(-self.slope * x) / ((torch.exp(-self.slope * x) + 1) ** 2)
 
 class FastSigmoid(SurrogateThresholdFunction):
     def __init__(self, slope=25.0):
         self.slope = slope
     
     def backward(self, x: torch.Tensor):
-        return 1.0 / (1.0 + self.slope * torch.abs(x))**2
+        if x.is_sparse:
+            # Apply the operation only on the non-zero elements (values)
+            values = x._values()
+            new_values = 1.0 / (1.0 + self.slope * torch.abs(values)) ** 2
+            # Return a new sparse tensor with the updated values
+            return torch.sparse_coo_tensor(x._indices(), new_values, x.shape)
+        else:
+            return 1.0 / (1.0 + self.slope * torch.abs(x)) ** 2
     
 class Atan(SurrogateThresholdFunction):
     def __init__(self, alpha=1.0):
         self.alpha = alpha
 
     def backward(self, x: torch.Tensor):
-        return 1 / (torch.pi * (1 + (torch.pi * x * (self.alpha/2))**2))
+        if x.is_sparse:
+            # Apply the operation only on the non-zero elements (values)
+            values = x._values()
+            new_values = 1 / (torch.pi * (1 + (torch.pi * values * (self.alpha / 2)) ** 2))
+            # Return a new sparse tensor with the updated values
+            return torch.sparse_coo_tensor(x._indices(), new_values, x.shape)
+        else:
+            return 1 / (torch.pi * (1 + (torch.pi * x * (self.alpha / 2)) ** 2))
