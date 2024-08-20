@@ -36,7 +36,6 @@ def test_lif_function():
         spk.sum().backward()
         print('Backward time: ', time.time() - t)
     #print(prof.key_averages().table(sort_by="self_cpu_memory_usage", row_limit=10))
-test_lif_function()
 
 def test_zero_current_forward():
     device = torch.device("cpu")
