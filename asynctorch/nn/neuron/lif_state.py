@@ -15,25 +15,30 @@ class LIFFunction(torch.autograd.Function):
                 spike_grad: SurrogateThresholdFunction, 
                 sync_grad: SurrogateThresholdFunction):
         check_membrane = (membrane_potentials - membrane_threshold)
-        check_sync = (sync_potentials - sync_threshold)
-        ctx.save_for_backward(check_membrane, check_sync)
+        #check_sync = (sync_potentials - sync_threshold)
+        #sparsity_mask_membrane = check_membrane > -0.1
+        #sparsity_mask_sync = check_sync > -0.3
+        #check_membrane = torch.where(sparsity_mask_membrane, check_membrane, torch.zeros_like(check_membrane))
+        #check_sync = torch.where(sparsity_mask_sync, check_sync, torch.zeros_like(check_sync))
+        #print('Sparsity:', check_membrane.count_nonzero().item() / check_membrane.numel())
+        ctx.save_for_backward(check_membrane)
         ctx.spike_grad = spike_grad
-        ctx.sync_grad = sync_grad
+        #ctx.sync_grad = sync_grad
 
         # >> Check thresholds and spike
-        spk: torch.Tensor = spike_grad.forward(check_membrane) * sync_grad.forward(check_sync)
+        spk: torch.Tensor = spike_grad.forward(check_membrane) #* sync_grad.forward(check_sync)
         return spk
     
     @staticmethod
     def backward(ctx, dL_dspk: torch.Tensor):
-        check_membrane, check_sync = ctx.saved_tensors
+        check_membrane, = ctx.saved_tensors # check_sync is removed
         spike_grad = ctx.spike_grad
-        sync_grad = ctx.sync_grad
+        #sync_grad = ctx.sync_grad
 
         dL_dmembrane_potentials = dL_dspk * spike_grad.backward(check_membrane)
-        dL_dsync_potentials = dL_dspk * sync_grad.backward(check_sync)
+        #dL_dsync_potentials = dL_dspk * sync_grad.backward(check_sync)
 
-        return dL_dmembrane_potentials, None, dL_dsync_potentials, None, None, None, None
+        return dL_dmembrane_potentials, None, None, None, None, None, None
 
     
     
