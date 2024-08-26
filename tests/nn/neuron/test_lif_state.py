@@ -18,12 +18,10 @@ def test_forward_performance():
     n_neurons = neurons_per_layer * n_layers
     tau_m = 0.9
     membrane_threshold = 0.3
-    sync_threshold = 0.0
     spike_grad = FastSigmoid(1)
-    sync_grad = FastSigmoid(1)
     device = torch.device("cuda")
     batch_size = 2
-    state_module = LIFState([neurons_per_layer for _ in range(n_layers)], tau_m, membrane_threshold, sync_threshold, spike_grad, sync_grad, device)
+    state_module = LIFState([neurons_per_layer for _ in range(n_layers)], tau_m, membrane_threshold, spike_grad, device)
     state_module._init_state(batch_size)
     torch.manual_seed(0)
     torch.cuda.reset_peak_memory_stats()
@@ -45,9 +43,6 @@ def test_forward_performance():
     print('Backward time: ', time.time() - t)
     # Print memory usage
     print('Memory: ', torch.cuda.max_memory_allocated() / 1e3, 'KB')
-    
-
-test_forward_performance()
 
 def test_lif_function():
     n_neurons = 1000
@@ -57,22 +52,17 @@ def test_lif_function():
     s_in = torch.ones((batch_size, n_neurons), dtype=torch.float32)
     s_in[:, :n_neurons-10] = 0
     I_new = s_in * W
-    n_I_new = s_in
     membrane_potentials = torch.zeros((batch_size, n_neurons), dtype=torch.float32)
     membrane_threshold = torch.full(size=(n_neurons,), fill_value=0.3, dtype=torch.float32)
-    sync_potentials = torch.zeros((batch_size, n_neurons), dtype=torch.float32)
-    sync_threshold = torch.zeros(n_neurons, dtype=torch.float32)
     spike_grad = FastSigmoid(1)
-    sync_grad = FastSigmoid(1)
     update_mask = I_new != 0
 
     membrane_potentials = membrane_potentials + I_new
-    sync_potentials = sync_potentials + n_I_new
 
     with profile(activities=[ProfilerActivity.CPU], record_shapes=True, profile_memory=True) as prof:
         t = time.time()
         spk = LIFFunction.apply(
-            update_mask, membrane_potentials, membrane_threshold, sync_potentials, sync_threshold, spike_grad, sync_grad
+            membrane_potentials, membrane_threshold, spike_grad, None
         )
         print('Forward time: ', time.time() - t)
         t = time.time()
@@ -84,10 +74,9 @@ def test_zero_current_forward():
     device = torch.device("cpu")
     tau_m = torch.ones(10, device=device)
     membrane_threshold = torch.ones(10, device=device)
-    sync_threshold = torch.ones(10, device=device)
     spike_grad = FastSigmoid(1)
 
-    state_module = LIFState([10], tau_m, membrane_threshold, sync_threshold, spike_grad, spike_grad, device)
+    state_module = LIFState([10], tau_m, membrane_threshold, spike_grad, device)
     state_module._init_state(2)
     state_module.step_dynamics(100.0)
     I_new = torch.zeros((2, 10), device=device)
@@ -101,46 +90,44 @@ def test_nonzero_current_forward():
     device = torch.device("cpu")
     tau_m = torch.ones(10, device=device)
     membrane_threshold = torch.full((10,), 1/2, device=device)
-    sync_threshold = torch.zeros(10, device=device)
     spike_grad = FastSigmoid(1)
 
-    state_module = LIFState([10], tau_m, membrane_threshold, sync_threshold, spike_grad, spike_grad, device)
+    state_module = LIFState([10], tau_m, membrane_threshold, spike_grad, device)
     state_module._init_state(2)
     I_new = torch.ones((2, 10), device=device)
     n_I_new = torch.ones((2, 10), device=device)
     spk = state_module(I_new, n_I_new)
     assert spk.sum() == 20
 
-def test_sync_threshold():
-    device = torch.device("cpu")
-    tau_m = torch.ones(10, device=device)
-    membrane_threshold = torch.full((10,), 1/2, device=device)
-    sync_threshold = torch.full((10,), 1.5, device=device)
-    spike_grad = FastSigmoid(1)
+# TODO: move this test to test_synchronizing_lif_state.py
+# def test_sync_threshold():
+#     device = torch.device("cpu")
+#     tau_m = torch.ones(10, device=device)
+#     membrane_threshold = torch.full((10,), 1/2, device=device)
+#     spike_grad = FastSigmoid(1)
 
-    state_module = LIFState([10], tau_m, membrane_threshold, sync_threshold, spike_grad, spike_grad, device)
-    state_module._init_state(2)
-    I_new = torch.ones((2, 10), device=device)
-    n_I_new = torch.ones((2, 10), device=device)
-    spk = state_module(I_new, n_I_new)
-    assert spk.sum() == 0
-    assert state_module.membrane_potentials.sum() == 20
-    assert state_module.pre_spike_membrane_potentials.sum() == 0
-    I_new = torch.ones((2, 10), device=device)
-    n_I_new = torch.ones((2, 10), device=device)
-    spk = state_module(I_new, n_I_new)
-    assert spk.sum() == 20
-    assert state_module.membrane_potentials.sum() == 0
-    assert state_module.pre_spike_membrane_potentials.sum() == 40
+#     state_module = LIFState([10], tau_m, membrane_threshold, spike_grad, device)
+#     state_module._init_state(2)
+#     I_new = torch.ones((2, 10), device=device)
+#     n_I_new = torch.ones((2, 10), device=device)
+#     spk = state_module(I_new, n_I_new)
+#     assert spk.sum() == 0
+#     assert state_module.membrane_potentials.sum() == 20
+#     assert state_module.pre_spike_membrane_potentials.sum() == 0
+#     I_new = torch.ones((2, 10), device=device)
+#     n_I_new = torch.ones((2, 10), device=device)
+#     spk = state_module(I_new, n_I_new)
+#     assert spk.sum() == 20
+#     assert state_module.membrane_potentials.sum() == 0
+#     assert state_module.pre_spike_membrane_potentials.sum() == 40
 
 def test_refrac():
     device = torch.device("cpu")
     tau_m = torch.ones(10, device=device)
     membrane_threshold = torch.full((10,), 1/2, device=device)
-    sync_threshold = torch.zeros(10, device=device)
     spike_grad = FastSigmoid(1)
 
-    state_module = LIFState([10], tau_m, membrane_threshold, sync_threshold, spike_grad, spike_grad, device)
+    state_module = LIFState([10], tau_m, membrane_threshold, spike_grad, device)
     state_module._init_state(2)
     I_new = torch.ones((2, 10), device=device)
     n_I_new = torch.ones((2, 10), device=device)
@@ -160,10 +147,9 @@ def test_membrane_decay():
     device = torch.device("cpu")
     tau_m = torch.ones(10, device=device)
     membrane_threshold = torch.full((10,), 1.00000001, device=device)
-    sync_threshold = torch.zeros((10,), device=device)
     spike_grad = FastSigmoid(1)
 
-    state_module = LIFState([10], tau_m, membrane_threshold, sync_threshold, spike_grad, spike_grad, device)
+    state_module = LIFState([10], tau_m, membrane_threshold, spike_grad, device)
     state_module._init_state(2)
     I_new = torch.ones((2, 10), device=device)
     n_I_new = torch.ones((2, 10), device=device)

@@ -9,8 +9,6 @@ class SurrogateThresholdFunction(ABC):
     def backward(self, x):
         pass
 
-import torch
-
 class Sigmoid(SurrogateThresholdFunction):
     def __init__(self, slope=1.0):
         self.slope = slope
