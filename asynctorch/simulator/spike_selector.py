@@ -18,7 +18,8 @@ class SpikeSelector(nn.Module):
         spike_scheduler: SpikeScheduler,
         forward_group_size: int,
         device: torch.device,
-        prioritize_input: bool
+        prioritize_input: bool,
+        log_queue_length: bool = False,
     ):
         super().__init__()
         self.architecture = architecture
@@ -26,6 +27,7 @@ class SpikeSelector(nn.Module):
         self.prioritize_input = prioritize_input
         self.device = device
         self.forward_group_size = forward_group_size
+        self.log_queue_length = log_queue_length
         self._reset_state()
 
     def is_init(self) -> bool:
@@ -49,6 +51,7 @@ class SpikeSelector(nn.Module):
         self.outgoing_spikes = None
         self.indices = None
         self.indices_by_priority = None
+        self.queue_log = []
 
     def _detach_state(self):
         if self.is_init():
@@ -91,10 +94,12 @@ class SpikeSelector(nn.Module):
         if not self.prioritize_input:
             # Make sure the spikes are in the right shape, since we also need to track input spikes in outgoing_spikes.
             if is_input:
-                print(s_in.shape)
                 s_in = torch.cat((s_in, torch.zeros((s_in.shape[0], self.architecture.n_neurons), device=self.device)), dim=1)
             else:
                 s_in = torch.cat((torch.zeros((s_in.shape[0], self.architecture.n_inputs), device=self.device), s_in), dim=1)
         self.outgoing_spikes = self.outgoing_spikes + s_in
         self.sort_indices()
-        return self.emit_spikes()
+        emit = self.emit_spikes()
+        if self.log_queue_length:
+            self.queue_log.append(self.outgoing_spikes.sum().item())
+        return emit

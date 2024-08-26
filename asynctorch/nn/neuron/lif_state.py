@@ -14,12 +14,16 @@ class LIFFunction(torch.autograd.Function):
                 sync_threshold: torch.Tensor, 
                 spike_grad: SurrogateThresholdFunction, 
                 sync_grad: SurrogateThresholdFunction,
-                frac_backprop_threshold: float):
+                backprop_threshold: Union[float, None]): # None means no thresholding
         check_membrane = (membrane_potentials - membrane_threshold)
-        mask_membrane = check_membrane.abs() < frac_backprop_threshold
-        check_membrane_backwards = check_membrane * mask_membrane
-        #print('Density:', check_membrane_backwards.count_nonzero().item() / check_membrane.numel())
-        ctx.save_for_backward(check_membrane_backwards.to_sparse())
+
+        if backprop_threshold is not None:
+            mask_membrane = check_membrane > backprop_threshold
+            check_membrane_backwards = check_membrane * mask_membrane
+            #print('Density:', check_membrane_backwards.count_nonzero().item() / check_membrane.numel())
+            ctx.save_for_backward(check_membrane_backwards.to_sparse())
+        else:
+            ctx.save_for_backward(check_membrane)
         ctx.spike_grad = spike_grad
 
         # >> Check thresholds and spike
@@ -28,11 +32,14 @@ class LIFFunction(torch.autograd.Function):
     
     @staticmethod
     def backward(ctx, dL_dspk: torch.Tensor):
-        check_membrane_sparse, = ctx.saved_tensors
+        check_membrane, = ctx.saved_tensors
         spike_grad = ctx.spike_grad
 
-        dspk_dmem = torch.zeros_like(dL_dspk)
-        dspk_dmem[check_membrane_sparse._indices().unbind()] = spike_grad.backward(check_membrane_sparse._values())
+        if check_membrane.is_sparse:
+            dspk_dmem = torch.zeros_like(dL_dspk)
+            dspk_dmem[check_membrane._indices().unbind()] = spike_grad.backward(check_membrane._values())
+        else:
+            dspk_dmem = spike_grad.backward(check_membrane)
 
         dL_dmembrane_potentials = dL_dspk * dspk_dmem
 
@@ -59,8 +66,7 @@ class LIFState(NeuronState):
         apply_refrac: bool = True,
         refrac_dropout: float = 0.0,
         trainable_sync_threshold: bool = False,
-        save_grad_sparse = False, # Saves gradients as sparse tensors
-        frac_backprop_threshold = 0.9,
+        backprop_threshold = None, 
         **kwargs,
     ):
         super().__init__(neurons_per_layer, device, *args, **kwargs)
@@ -91,8 +97,7 @@ class LIFState(NeuronState):
         self.sync_grad = sync_grad  # surrogate gradient for synchronization function
         self.refrac_dropout = refrac_dropout
         self.apply_refrac = apply_refrac
-        self.save_grad_sparse = save_grad_sparse
-        self.frac_backprop_threshold = frac_backprop_threshold
+        self.backprop_threshold = backprop_threshold
         self._reset_state()
 
     def is_init(self) -> bool:
@@ -142,36 +147,17 @@ class LIFState(NeuronState):
         if not self.is_init():
             raise RuntimeError("State module not initialized")
 
-        def sparse_pack_hook(mask, x):
-            return (x * mask).to_sparse()
-        
-        def sparse_unpack_hook(x):
-            return x.to_dense()
-        
-        def identity_hook(x):
-            return x
-
-        if self.save_grad_sparse:
-            with torch.no_grad():
-                update_mask = I_new != 0
-            pack_hook = functools.partial(sparse_pack_hook, update_mask)
-            unpack_hook = sparse_unpack_hook
+        # >> Add current, apply refractory period
+        if self.apply_refrac:
+            membrane_potentials = (self.membrane_potentials + I_new) * ~self.is_refrac
         else:
-            pack_hook = identity_hook
-            unpack_hook = identity_hook
-        
-        with torch.autograd.graph.saved_tensors_hooks(pack_hook, unpack_hook):
-            # >> Add current, apply refractory period
-            if self.apply_refrac:
-                membrane_potentials = (self.membrane_potentials + I_new) * ~self.is_refrac
-            else:
-                membrane_potentials = self.membrane_potentials + I_new
-            self.synchronization_potentials = self.synchronization_potentials + n_I_new
+            membrane_potentials = self.membrane_potentials + I_new
+        self.synchronization_potentials = self.synchronization_potentials + n_I_new
 
-            # >> Check thresholds and spike
-            spk = LIFFunction.apply(
-                membrane_potentials, self.membrane_threshold, self.synchronization_potentials, self.sync_threshold, self.spike_grad, self.sync_grad, self.frac_backprop_threshold
-            )
+        # >> Check thresholds and spike
+        spk = LIFFunction.apply(
+            membrane_potentials, self.membrane_threshold, self.synchronization_potentials, self.sync_threshold, self.spike_grad, self.sync_grad, self.backprop_threshold
+        )
 
         with torch.no_grad():
             # >> Update membrane potential

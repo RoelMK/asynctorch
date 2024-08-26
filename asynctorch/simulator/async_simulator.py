@@ -34,6 +34,7 @@ class AsyncSimulator(nn.Module):
             extension._init_state(batch_size)
 
     def reset_state(self):
+        self.n_forward_steps = 0
         self.neuron_state._reset_state()
         self.spike_selector._reset_state()
         self.spike_counts = None
@@ -79,6 +80,7 @@ class AsyncSimulator(nn.Module):
             I_new, n_I_new = self.spike_selector(s_new)
             for extension in self.forward_step_extensions:
                 I_new, n_I_new = extension.on_current(I_new, n_I_new, is_input=False)
+            self.n_forward_steps += 1
         self.spike_counts = self.spike_counts + spike_counts
 
         for extension in self.forward_step_extensions:
