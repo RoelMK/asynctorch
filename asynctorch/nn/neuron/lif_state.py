@@ -13,32 +13,30 @@ class LIFFunction(torch.autograd.Function):
                 sync_potentials: torch.Tensor, 
                 sync_threshold: torch.Tensor, 
                 spike_grad: SurrogateThresholdFunction, 
-                sync_grad: SurrogateThresholdFunction):
+                sync_grad: SurrogateThresholdFunction,
+                frac_backprop_threshold: float):
         check_membrane = (membrane_potentials - membrane_threshold)
-        #check_sync = (sync_potentials - sync_threshold)
-        #sparsity_mask_membrane = check_membrane > -0.1
-        #sparsity_mask_sync = check_sync > -0.3
-        #check_membrane = torch.where(sparsity_mask_membrane, check_membrane, torch.zeros_like(check_membrane))
-        #check_sync = torch.where(sparsity_mask_sync, check_sync, torch.zeros_like(check_sync))
-        #print('Sparsity:', check_membrane.count_nonzero().item() / check_membrane.numel())
-        ctx.save_for_backward(check_membrane)
+        mask_membrane = check_membrane.abs() < frac_backprop_threshold
+        check_membrane_backwards = check_membrane * mask_membrane
+        #print('Density:', check_membrane_backwards.count_nonzero().item() / check_membrane.numel())
+        ctx.save_for_backward(check_membrane_backwards.to_sparse())
         ctx.spike_grad = spike_grad
-        #ctx.sync_grad = sync_grad
 
         # >> Check thresholds and spike
-        spk: torch.Tensor = spike_grad.forward(check_membrane) #* sync_grad.forward(check_sync)
+        spk: torch.Tensor = spike_grad.forward(check_membrane)
         return spk
     
     @staticmethod
     def backward(ctx, dL_dspk: torch.Tensor):
-        check_membrane, = ctx.saved_tensors # check_sync is removed
+        check_membrane_sparse, = ctx.saved_tensors
         spike_grad = ctx.spike_grad
-        #sync_grad = ctx.sync_grad
 
-        dL_dmembrane_potentials = dL_dspk * spike_grad.backward(check_membrane)
-        #dL_dsync_potentials = dL_dspk * sync_grad.backward(check_sync)
+        dspk_dmem = torch.zeros_like(dL_dspk)
+        dspk_dmem[check_membrane_sparse._indices().unbind()] = spike_grad.backward(check_membrane_sparse._values())
 
-        return dL_dmembrane_potentials, None, None, None, None, None, None
+        dL_dmembrane_potentials = dL_dspk * dspk_dmem
+
+        return dL_dmembrane_potentials, None, None, None, None, None, None, None
 
     
     
@@ -62,6 +60,7 @@ class LIFState(NeuronState):
         refrac_dropout: float = 0.0,
         trainable_sync_threshold: bool = False,
         save_grad_sparse = False, # Saves gradients as sparse tensors
+        frac_backprop_threshold = 0.9,
         **kwargs,
     ):
         super().__init__(neurons_per_layer, device, *args, **kwargs)
@@ -93,6 +92,7 @@ class LIFState(NeuronState):
         self.refrac_dropout = refrac_dropout
         self.apply_refrac = apply_refrac
         self.save_grad_sparse = save_grad_sparse
+        self.frac_backprop_threshold = frac_backprop_threshold
         self._reset_state()
 
     def is_init(self) -> bool:
@@ -170,7 +170,7 @@ class LIFState(NeuronState):
 
             # >> Check thresholds and spike
             spk = LIFFunction.apply(
-                membrane_potentials, self.membrane_threshold, self.synchronization_potentials, self.sync_threshold, self.spike_grad, self.sync_grad
+                membrane_potentials, self.membrane_threshold, self.synchronization_potentials, self.sync_threshold, self.spike_grad, self.sync_grad, self.frac_backprop_threshold
             )
 
         with torch.no_grad():
