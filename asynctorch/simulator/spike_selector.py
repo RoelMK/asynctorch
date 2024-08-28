@@ -99,7 +99,7 @@ class SpikeSelector(nn.Module):
                 s_in = torch.cat((torch.zeros((s_in.shape[0], self.architecture.n_inputs), device=self.device), s_in), dim=1)
         self.outgoing_spikes = self.outgoing_spikes + s_in
         self.sort_indices()
-        emit = self.emit_spikes()
+        emitted = self.emit_spikes()
         if self.log_queue_length:
-            self.queue_log.append(self.outgoing_spikes.sum().item())
-        return emit
+            self.queue_log.append(self.outgoing_spikes.sum(dim=1).detach().cpu().numpy())
+        return emitted
