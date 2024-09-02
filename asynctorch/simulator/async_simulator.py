@@ -49,7 +49,7 @@ class AsyncSimulator(nn.Module):
         for extension in self.forward_step_extensions:
             extension._detach_state()
 
-    def forward(self, x: torch.Tensor, dt: float) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, dt: float, is_current: bool = False) -> torch.Tensor:
         # Check input
         batch_size = x.shape[0]
         if not self.is_init():
@@ -61,8 +61,9 @@ class AsyncSimulator(nn.Module):
         spike_counts = torch.zeros((batch_size, self.n_neurons), dtype=torch.float32, device=self.device)
 
         # Pass input
-        for extension in self.forward_step_extensions:
-            extension.on_spike(x, spike_counts, self.spike_counts, is_input=True)
+        if not is_current:
+            for extension in self.forward_step_extensions:
+                extension.on_spike(x, spike_counts, self.spike_counts, is_input=True)
         self.neuron_state.step_dynamics(dt)
         I_new, n_I_new = self.spike_selector(x, is_input=True)
         for extension in self.forward_step_extensions:

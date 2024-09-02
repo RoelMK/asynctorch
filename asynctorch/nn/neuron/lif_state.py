@@ -135,9 +135,9 @@ class LIFState(NeuronState):
             membrane_potentials, self.membrane_threshold, self.spike_grad, self.backprop_threshold
         )
 
+        # >> Update membrane potential
+        self.membrane_potentials = membrane_potentials * (-spk + 1)
         with torch.no_grad():
-            # >> Update membrane potential
-            self.membrane_potentials = membrane_potentials * (-spk + 1)
             self.pre_spike_membrane_potentials = membrane_potentials * spk + self.pre_spike_membrane_potentials * (1 - spk)
             # >> Set refractory period
             if self.apply_refrac:
