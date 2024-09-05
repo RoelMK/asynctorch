@@ -39,7 +39,7 @@ class FastSigmoid(SurrogateThresholdFunction):
             return 1.0 / (1.0 + self.slope * torch.abs(x)) ** 2
     
 class Atan(SurrogateThresholdFunction):
-    def __init__(self, alpha=1.0):
+    def __init__(self, alpha=2.0):
         self.alpha = alpha
 
     def backward(self, x: torch.Tensor):
