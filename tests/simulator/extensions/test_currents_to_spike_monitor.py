@@ -1,6 +1,6 @@
 from asynctorch.simulator.extensions.currents_to_spike_monitor import CurrentsToSpikeMonitor
 import torch
-from old_tests.simulator.test_async_simulator import build_async_simulator
+from ..test_async_simulator import build_async_simulator
 
 def test_currents_to_spike_monitor_isolated():
     monitor = CurrentsToSpikeMonitor(3,0, torch.device('cpu'))
@@ -68,15 +68,16 @@ def test_currents_to_spike_monitor_isolated_ignore_first_n_neurons():
 
 def test_currents_to_spike_monitor_simulated():
     monitor = CurrentsToSpikeMonitor(2, 1, torch.device('cpu'))
+    module_per_layer = [torch.nn.Linear(1, 1, bias=False), torch.nn.Linear(1, 1, bias=False)]
+    for module in module_per_layer:
+        module.weight.data.fill_(0.4)
     async_simulator = build_async_simulator(
-        n_inputs=1,
+        module_per_layer=module_per_layer,
+        shape_per_layer=[(1,), (1,), (1,)],
         forward_group_size=1,
         membrane_threshold=0.5,
-        weight_value=0.4,
-        neurons_per_layer=[1, 1],
         forward_step_extensions=[monitor],
         apply_refrac=False,
-        prioritize_input=False,
         tau_m=1e6,
     )
     async_simulator.init_state(batch_size=2)

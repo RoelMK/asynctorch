@@ -1,7 +1,8 @@
 from asynctorch.nn.neuron.lif_state import LIFState
 from asynctorch.simulator.spike_scheduler import MomentumSpikeScheduler, RandomSpikeScheduler
 import torch
-from snntorch import surrogate
+
+from asynctorch.utils.surrogate import ATan
 
 def test_random_spike_scheduler_single_spike():
     random_scheduler = RandomSpikeScheduler(None)
@@ -29,9 +30,7 @@ def test_momentum_spike_scheduler():
         neurons_per_layer=[2],
         tau_m=torch.tensor([1.0, 1.0]),
         membrane_threshold=torch.tensor([0.2, 0.2]),
-        sync_threshold=torch.tensor([0.0, 0.0]),
-        spike_grad=surrogate.atan(),
-        sync_grad=surrogate.atan(),
+        spike_grad=ATan(),
         device=torch.device("cpu")
     )
     lif_state._init_state(3)
