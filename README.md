@@ -14,12 +14,14 @@ pip install -e .
 ```
 
 # Tutorials
+**The notebooks are currently work-in-progress! This information is outdated.**
+
 You can start by checking the examples in the `examples` folder. The examples are written in Jupyter notebooks and can be run in a Jupyter notebook environment. 
 
-| Notebook | Content |
+~~| Notebook | Content |
 |---|---|
 | tutorial_training.ipynb | Train a model using asynctorch |
-| tutorial_inference.ipynb | Infer using both a model trained with snnTorch and a model trained with asynctorch |
+| tutorial_inference.ipynb | Infer using both a model trained with snnTorch and a model trained with asynctorch |~~
 
 
 # Structure
@@ -27,7 +29,7 @@ The repository is structured as follows:
 
 | Package | Content |
 |---|---|
-| asynctorch.nn.architecture | Architectures (currently supported: fully-connected) |
+| asynctorch.nn.architecture | Architectures (currently supported: mixed) |
 | asynctorch.nn.neuron | Neuron models (currently supported: LIF) |
 | asynctorch.simulator | Simulator base modules |
 | asynctorch.simulator.extensions |  Extensions to the simulator |
@@ -39,8 +41,7 @@ Below is a description of the supported architectures, neuron models, and simula
 The following architectures are supported:
 | Class | Type | Description |
 |---|---|---|
-| SemiSparseFullyLinearArchitecture | Fully-connected | Input and network weights are separated, resulting in better performance, but requiring input spikes to be prioritized. |
-| SparseFullyLinearArchitecture | Fully-connected | All weights are in a single matrix, allowing maximum flexibility in input spike encoding. |
+| MixedArchitecture | Any type | Build sophisticated networks by connecting torch.nn modules. Does not support unprioritized input yet. |
 
 
 ## Neuron models

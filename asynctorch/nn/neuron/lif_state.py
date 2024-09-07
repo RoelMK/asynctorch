@@ -15,7 +15,6 @@ class LIFFunction(torch.autograd.Function):
         if backprop_threshold is not None:
             mask_membrane = check_membrane > backprop_threshold
             check_membrane_backwards = check_membrane * mask_membrane
-            #print('Density:', check_membrane_backwards.count_nonzero().item() / check_membrane.numel())
             ctx.save_for_backward(check_membrane_backwards.to_sparse())
         else:
             ctx.save_for_backward(check_membrane)

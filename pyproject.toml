@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "asynctorch" 
-version = "0.0.1" 
+version = "0.1.0" 
 description = "Asynchronous spiking neural networks in PyTorch"
 readme = "README.md"
 requires-python = ">=3.8"
 license = {file = "LICENSE"}
 keywords = ["asynctorch"]
 authors = [
-  {name = "Roel Koopman", email = "roel.koopman.ext@imec.nl" }
+  {name = "Roel Koopman", email = "roelmk@hotmail.nl" }
 ]
 # For a list of valid classifiers, see https://pypi.org/classifiers/
 classifiers = [
