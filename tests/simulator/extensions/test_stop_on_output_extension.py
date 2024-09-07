@@ -155,7 +155,11 @@ def test_stop_on_output_with_post_output():
 
 def test_stop_on_output_in_async_sim_without_post_output():
     extension = StopOnOutputExtension(1, 1, 0)
-    async_simulator = build_async_simulator(n_inputs=1, neurons_per_layer=[1], membrane_threshold=0.5, forward_step_extensions=[extension])
+    module_per_layer = [torch.nn.Linear(1, 1, bias=False)]
+    for module in module_per_layer:
+        module.weight.data.fill_(0.9)
+    shape_per_layer = [(1,), (1,)]
+    async_simulator = build_async_simulator(module_per_layer, shape_per_layer, membrane_threshold=0.5, forward_step_extensions=[extension])
     async_simulator.init_state(batch_size=2)
     s_in = torch.asarray([[1], [0]], dtype=torch.float32)
     spike_counts = async_simulator(s_in, dt=1.0)
